@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: my-release-redis-replica
+  labels:
+    app.kubernetes.io/instance: my-release
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/version: 7.4.1

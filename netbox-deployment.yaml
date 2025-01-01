@@ -1,0 +1,221 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-release-netbox
+  labels:
+    app.kubernetes.io/instance: my-release
+    app.kubernetes.io/name: netbox
+    app.kubernetes.io/version: v4.1.10
+    app.kubernetes.io/component: netbox
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: my-release
+      app.kubernetes.io/name: netbox
+      app.kubernetes.io/component: netbox
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        checksum/config: bb90d68746ff317df3d593383f1e6032b1eb28373e16767d03006e7b8ba8c046
+        checksum/secret: 3d0e4ca9dd5eb9da9da19ae570e94a9839fbc4560f67926e52cb28a66a665c25
+      labels:
+        app.kubernetes.io/instance: my-release
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: netbox
+        app.kubernetes.io/version: v4.1.10
+        helm.sh/chart: netbox-5.0.5
+        app.kubernetes.io/component: netbox
+    spec:
+      
+      serviceAccountName: my-release-netbox
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      initContainers:
+      - name: init-dirs
+        image: "docker.io/busybox:1.37.0"
+        imagePullPolicy: "IfNotPresent"
+        command: [/bin/sh, -c, mkdir -p /opt/unit/state /opt/unit/tmp]
+        resources:
+          limits:
+            cpu: 150m
+            ephemeral-storage: 2Gi
+            memory: 192Mi
+          requests:
+            cpu: 100m
+            ephemeral-storage: 50Mi
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seLinuxOptions: {}
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+        - name: optunit
+          mountPath: /opt/unit
+      containers:
+      - name: netbox
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seLinuxOptions: {}
+          seccompProfile:
+            type: RuntimeDefault
+        image: "ghcr.io/netbox-community/netbox:v4.1.10"
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: SUPERUSER_NAME
+          valueFrom:
+            secretKeyRef:
+              name: my-release-netbox-superuser
+              key: username
+        - name: SUPERUSER_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: my-release-netbox-superuser
+              key: email
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: nginx-status
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+          httpGet:
+            path: /status/applications/netbox/processes/running
+            port: nginx-status
+        readinessProbe:
+          failureThreshold: 3
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+          httpGet:
+            path: /login/
+            port: http
+        startupProbe:
+          failureThreshold: 10
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+          httpGet:
+            path: /login/
+            port: http
+        volumeMounts:
+        - name: config
+          mountPath: /etc/netbox/config/configuration.py
+          subPath: configuration.py
+          readOnly: true
+        - name: config
+          mountPath: /run/config/netbox
+          readOnly: true
+        - name: secrets
+          mountPath: /run/secrets/netbox
+          readOnly: true
+        
+        - name: netbox-tmp
+          mountPath: /tmp
+        - name: media
+          mountPath: /opt/netbox/netbox/media
+          subPath: ""
+        - name: optunit
+          mountPath: /opt/unit
+        - name: secrets
+          mountPath: /run/secrets/superuser_password
+          subPath: superuser_password
+          readOnly: true
+        - name: secrets
+          mountPath: /run/secrets/superuser_api_token
+          subPath: superuser_api_token
+          readOnly: true
+        resources:
+          limits:
+            cpu: 750m
+            ephemeral-storage: 2Gi
+            memory: 1536Mi
+          requests:
+            cpu: 500m
+            ephemeral-storage: 50Mi
+            memory: 1024Mi
+      volumes:
+      - name: config
+        configMap:
+          name: my-release-netbox
+      - name: secrets
+        projected:
+          sources:
+          - secret:
+              name: my-release-netbox-config
+              items:
+              - key: secret_key
+                path: secret_key
+          - secret:
+              name: my-release-netbox-config
+              items:
+              - key: "email_password"
+                path: email_password
+          - secret:
+              name: my-release-netbox-superuser
+              items:
+              - key: password
+                path: superuser_password
+              - key: api_token
+                path: superuser_api_token
+          - secret:
+              name: "my-release-postgresql"
+              items:
+              - key: "password"
+                path: db_password
+          - secret:
+              name: "my-release-redis"
+              items:
+              - key: "redis-password"
+                path: redis_tasks_password
+          - secret:
+              name: "my-release-redis"
+              items:
+              - key: "redis-password"
+                path: redis_cache_password
+      
+      - name: netbox-tmp
+        emptyDir:
+          medium: Memory
+      - name: optunit
+        emptyDir:
+          medium: Memory
+      - name: media
+        persistentVolumeClaim:
+          claimName: my-release-netbox-media

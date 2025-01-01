@@ -1,0 +1,258 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "1"
+  generation: 1
+  labels:
+    app.kubernetes.io/component: netbox
+    app.kubernetes.io/instance: my-release
+    app.kubernetes.io/name: netbox
+    app.kubernetes.io/version: v4.1.10
+  name: my-release-netbox
+  resourceVersion: "322653"
+  uid: 8613cbfa-849a-4ced-8838-0a091cc12009
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: netbox
+      app.kubernetes.io/instance: my-release
+      app.kubernetes.io/name: netbox
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        checksum/config: bb90d68746ff317df3d593383f1e6032b1eb28373e16767d03006e7b8ba8c046
+        checksum/secret: bc83ce7a8e8016f682cb5b471d63eefc7da6a3b0a07ca7ac973301e6cfaf4e57
+      creationTimestamp: null
+      labels:
+        app.kubernetes.io/component: netbox
+        app.kubernetes.io/instance: my-release
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: netbox
+        app.kubernetes.io/version: v4.1.10
+        helm.sh/chart: netbox-5.0.5
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - env:
+        - name: SUPERUSER_NAME
+          valueFrom:
+            secretKeyRef:
+              key: username
+              name: my-release-netbox-superuser
+        - name: SUPERUSER_EMAIL
+          valueFrom:
+            secretKeyRef:
+              key: email
+              name: my-release-netbox-superuser
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: status.podIP
+        image: ghcr.io/netbox-community/netbox:v4.1.10
+        imagePullPolicy: IfNotPresent
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /status/applications/netbox/processes/running
+            port: nginx-status
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: netbox
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        - containerPort: 8081
+          name: nginx-status
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /login/
+            port: http
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 750m
+            ephemeral-storage: 2Gi
+            memory: 1536Mi
+          requests:
+            cpu: 500m
+            ephemeral-storage: 50Mi
+            memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seLinuxOptions: {}
+          seccompProfile:
+            type: RuntimeDefault
+        startupProbe:
+          failureThreshold: 10
+          httpGet:
+            path: /login/
+            port: http
+            scheme: HTTP
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /etc/netbox/config/configuration.py
+          name: config
+          readOnly: true
+          subPath: configuration.py
+        - mountPath: /run/config/netbox
+          name: config
+          readOnly: true
+        - mountPath: /run/secrets/netbox
+          name: secrets
+          readOnly: true
+        - mountPath: /tmp
+          name: netbox-tmp
+        - mountPath: /opt/netbox/netbox/media
+          name: media
+        - mountPath: /opt/unit
+          name: optunit
+        - mountPath: /run/secrets/superuser_password
+          name: secrets
+          readOnly: true
+          subPath: superuser_password
+        - mountPath: /run/secrets/superuser_api_token
+          name: secrets
+          readOnly: true
+          subPath: superuser_api_token
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - /bin/sh
+        - -c
+        - mkdir -p /opt/unit/state /opt/unit/tmp
+        image: docker.io/busybox:1.37.0
+        imagePullPolicy: IfNotPresent
+        name: init-dirs
+        resources:
+          limits:
+            cpu: 150m
+            ephemeral-storage: 2Gi
+            memory: 192Mi
+          requests:
+            cpu: 100m
+            ephemeral-storage: 50Mi
+            memory: 128Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seLinuxOptions: {}
+          seccompProfile:
+            type: RuntimeDefault
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/unit
+          name: optunit
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: Always
+      serviceAccount: my-release-netbox
+      serviceAccountName: my-release-netbox
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - configMap:
+          defaultMode: 420
+          name: my-release-netbox
+        name: config
+      - name: secrets
+        projected:
+          defaultMode: 420
+          sources:
+          - secret:
+              items:
+              - key: secret_key
+                path: secret_key
+              name: my-release-netbox-config
+          - secret:
+              items:
+              - key: email_password
+                path: email_password
+              name: my-release-netbox-config
+          - secret:
+              items:
+              - key: password
+                path: superuser_password
+              - key: api_token
+                path: superuser_api_token
+              name: my-release-netbox-superuser
+          - secret:
+              items:
+              - key: password
+                path: db_password
+              name: my-release-postgresql
+          - secret:
+              items:
+              - key: redis-password
+                path: redis_tasks_password
+              name: my-release-redis
+          - secret:
+              items:
+              - key: redis-password
+                path: redis_cache_password
+              name: my-release-redis
+      - emptyDir:
+          medium: Memory
+        name: netbox-tmp
+      - emptyDir:
+          medium: Memory
+        name: optunit
+      - name: media
+        persistentVolumeClaim:
+          claimName: my-release-netbox-media
+status:
+  conditions:
+  - lastTransitionTime: "2024-12-31T15:57:01Z"
+    lastUpdateTime: "2024-12-31T15:57:01Z"
+    message: Deployment does not have minimum availability.
+    reason: MinimumReplicasUnavailable
+    status: "False"
+    type: Available
+  - lastTransitionTime: "2024-12-31T16:07:02Z"
+    lastUpdateTime: "2024-12-31T16:07:02Z"
+    message: ReplicaSet "my-release-netbox-867ff9549f" has timed out progressing.
+    reason: ProgressDeadlineExceeded
+    status: "False"
+    type: Progressing
+  observedGeneration: 1
+  replicas: 1
+  unavailableReplicas: 1
+  updatedReplicas: 1

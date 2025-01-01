@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-release-netbox-worker
+  labels:
+    app.kubernetes.io/instance: my-release
+    app.kubernetes.io/name: netbox
+    app.kubernetes.io/version: v4.1.10
+    app.kubernetes.io/component: worker
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: my-release
+      app.kubernetes.io/name: netbox
+      app.kubernetes.io/component: worker
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        checksum/config: bb90d68746ff317df3d593383f1e6032b1eb28373e16767d03006e7b8ba8c046
+        checksum/secret: 98127963441f5e4c3a0faff5704dd3e504e71c3ddfd58fe593e3217844839895
+      labels:
+        app.kubernetes.io/instance: my-release
+        app.kubernetes.io/name: netbox
+        app.kubernetes.io/version: v4.1.10
+        app.kubernetes.io/component: worker
+    spec:
+      
+      serviceAccountName: my-release-netbox
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: Always
+        supplementalGroups: []
+        sysctls: []
+      containers:
+      - name: netbox-worker
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          privileged: false
+          readOnlyRootFilesystem: true
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+          seLinuxOptions: {}
+          seccompProfile:
+            type: RuntimeDefault
+        image: "ghcr.io/netbox-community/netbox:v4.1.10"
+        imagePullPolicy: IfNotPresent
+        command:
+          - /opt/netbox/venv/bin/python
+          - /opt/netbox/netbox/manage.py
+          - rqworker
+        volumeMounts:
+        - name: config
+          mountPath: /etc/netbox/config/configuration.py
+          subPath: configuration.py
+          readOnly: true
+        - name: config
+          mountPath: /run/config/netbox
+          readOnly: true
+        - name: secrets
+          mountPath: /run/secrets/netbox
+          readOnly: true
+        
+        - name: netbox-tmp
+          mountPath: /tmp
+        - name: media
+          mountPath: /opt/netbox/netbox/media
+          subPath: ""
+          readOnly: false
+      volumes:
+      - name: config
+        configMap:
+          name: my-release-netbox
+      - name: secrets
+        projected:
+          sources:
+          - secret:
+              name: my-release-netbox-config
+              items:
+              - key: secret_key
+                path: secret_key
+          - secret:
+              name: my-release-netbox-config
+              items:
+              - key: "email_password"
+                path: email_password
+          - secret:
+              name: my-release-netbox-superuser
+              items:
+              - key: password
+                path: superuser_password
+              - key: api_token
+                path: superuser_api_token
+          - secret:
+              name: "my-release-postgresql"
+              items:
+              - key: "password"
+                path: db_password
+          - secret:
+              name: "my-release-redis"
+              items:
+              - key: "redis-password"
+                path: redis_tasks_password
+          - secret:
+              name: "my-release-redis"
+              items:
+              - key: "redis-password"
+                path: redis_cache_password
+      
+      - name: netbox-tmp
+        emptyDir:
+          medium: Memory
+      - name: media
+        persistentVolumeClaim:
+          claimName: my-release-netbox-media
+          readOnly: false
